@@ -1,6 +1,5 @@
 #include <iostream>
 #include <map>
-#include <set>
 #include <sstream>
 
 namespace vaszauskas {
@@ -9,6 +8,10 @@ using namespace std;
 
 /**
  * @brief  A tracker class based on an STL map that tracks memory allocations.
+ *
+ * Be careful when using this class to track memory allocations in other
+ * global objects. C++ makes no guarantees about the order of construction
+ * for global objects.
  */
 class MemoryTracker {
 
@@ -26,8 +29,8 @@ class MemoryTracker {
         }
     };
 
-    map<void *, Record> allocations;
-    map<string, map<int, int> > data;
+    map<void *, Record> allocations;   // keep track of all memory allocations
+    map<string, map<int, int> > data;  // used as reverse map to @a allocations
 
   public:
     MemoryTracker() {}
@@ -37,6 +40,7 @@ class MemoryTracker {
     }
 
     void add(void *p, const char *file, int line) {
+        // Add a record of the allocation to both maps.
         Record r = Record(file, line);
         allocations.insert(make_pair(p, r) );
         data[r.file][r.line]++;
@@ -45,16 +49,16 @@ class MemoryTracker {
     void remove(void *p) {
         map<void *, Record>::iterator it = allocations.find(p);
         if (it != allocations.end() ) {
-            // guaranteed to find a corresponding entry in data
+            // Guaranteed to find a corresponding entry in data.
             map<string, map<int, int> >::iterator sit;
             sit = data.find(it->second.file);
 
-            // found the corresponding entry in data; now find the internal
-            // entry in the map inside sit
+            // Found the corresponding entry in data; now find the internal
+            // entry in the map inside sit.
             map<int, int>::iterator mit;
             mit = sit->second.find(it->second.line);
 
-            // found the internal entry; erase it if it is 0.
+            // Found the internal entry; erase it if it is 0.
             if (--mit->second == 0) {
                 sit->second.erase(mit);
             }
@@ -84,6 +88,17 @@ MemoryTracker _memory_tracker;
 
 }  // namespace vaszauskas
 
+/**
+ * @brief  Replacement global operator new.
+ *
+ * @param size  Size of the memory chunk to allocate.
+ * @param file  Filename the call to new originated from.
+ * @param line  Line number the call to new originated from.
+ * @return  A pointer to the newly allocated chunk of memory.
+ *
+ * Uses the global object _memory_tracker (defined in namespace
+ * vaszauskas) to track memory allocations.
+ */
 void * operator new(size_t size, const char *file, int line) {
     void *p = malloc(size);
     vaszauskas::_memory_tracker.add(p, file, line);
@@ -94,6 +109,14 @@ void * operator new[](size_t size, const char *file, int line) {
     return operator new(size, file, line);
 }
 
+/**
+ * @brief  Replacement global operator delete.
+ *
+ * @param p  Pointer to a chunk of memory to free.
+ *
+ * Uses the global object _memory_tracker (defined in namespace
+ * vaszauskas) to track memory allocations.
+ */
 void operator delete(void *p) {
     vaszauskas::_memory_tracker.remove(p);
     free(p);
