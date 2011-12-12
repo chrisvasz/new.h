@@ -1,17 +1,19 @@
 #include <iostream>
 #include <map>
 #include <sstream>
+#include <cstdlib>
 
 namespace vaszauskas {
 
 using namespace std;
 
 /**
- * @brief  A tracker class based on an STL map that tracks memory allocations.
+ * A class that tracks memory allocations using an STL map.
  *
  * Be careful when using this class to track memory allocations in other
  * global objects. C++ makes no guarantees about the order of construction
- * for global objects.
+ * for global objects, so there is no guarantee that the memory tracker
+ * object will be constructed before any other global object.
  */
 class MemoryTracker {
 
@@ -30,7 +32,7 @@ class MemoryTracker {
     };
 
     map<void *, Record> allocations;   // keep track of all memory allocations
-    map<string, map<int, int> > data;  // used as reverse map to @a allocations
+    map<string, map<int, int> > data;  // reverse map to @a allocations
 
   public:
     MemoryTracker() {}
@@ -71,6 +73,7 @@ class MemoryTracker {
             return;
         }
 
+        // Report memory leaks to stderr.
         cerr << "============" << endl;
         cerr << "MEMORY LEAKS" << endl;
         map<string, map<int, int> >::iterator it;
@@ -78,7 +81,12 @@ class MemoryTracker {
         for (it = data.begin(); it != data.end(); ++it) {
             cerr << "  " << it->first << endl;
             for (mit = it->second.begin(); mit != it->second.end(); ++mit) {
-                cerr << "    " << mit->second << " leak(s) at line " << mit->first << endl;
+                int leaks = mit->second;
+                cerr << "    " << leaks << " leak";
+                if (leaks > 1) {
+                    cerr << "s";
+                }
+                cerr << " at line " << mit->first << endl;
             }
         }
     }
@@ -89,7 +97,7 @@ MemoryTracker _memory_tracker;
 }  // namespace vaszauskas
 
 /**
- * @brief  Replacement global operator new.
+ * Replacement global operator new.
  *
  * @param size  Size of the memory chunk to allocate.
  * @param file  Filename the call to new originated from.
@@ -110,19 +118,19 @@ void * operator new[](size_t size, const char *file, int line) {
 }
 
 /**
- * @brief  Replacement global operator delete.
+ * Replacement global operator delete.
  *
  * @param p  Pointer to a chunk of memory to free.
  *
  * Uses the global object _memory_tracker (defined in namespace
  * vaszauskas) to track memory allocations.
  */
-void operator delete(void *p) {
+void operator delete(void *p) throw() {
     vaszauskas::_memory_tracker.remove(p);
     free(p);
 }
 
-void operator delete[](void *p) {
+void operator delete[](void *p) throw() {
     operator delete(p);
 }
 
